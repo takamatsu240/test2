@@ -1,0 +1,298 @@
+name: Minutes Analyzer (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      files_pattern:
+        description: 'Pattern for minutes files to analyze (e.g., minutes/**/*.{docx,md})'
+        required: false
+        type: string
+        default: 'minutes/**/*.{docx,md}'
+      project_id:
+        description: 'Firestore project ID (optional, for multi-tenant)'
+        required: false
+        type: string
+        default: ''
+      analyze_mode:
+        description: 'Analysis mode: auto (detect file type) | markdown-only | word-only'
+        required: false
+        type: string
+        default: 'auto'
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT_KEY:
+        description: 'Firebase Service Account JSON Key'
+        required: true
+      OPENAI_API_KEY:
+        description: 'OpenAI API Key for GPT-4o'
+        required: true
+      GCP_PROJECT_ID:
+        description: 'Google Cloud Project ID'
+        required: true
+      GCP_WIF_PROVIDER:
+        description: 'GCP Workload Identity Provider'
+        required: false
+      GCP_SA_EMAIL:
+        description: 'GCP Service Account Email'
+        required: false
+
+jobs:
+  analyze:
+    name: Analyze Minutes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # ==================== Word→Markdown変換 ====================
+
+      - name: Set up Python for Word conversion
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Python dependencies
+        run: |
+          pip install python-docx
+
+      - name: Detect changed minutes files
+        id: changed_files
+        run: |
+          echo "=========================================="
+          echo "議事録ファイル検出開始"
+          echo "=========================================="
+          echo "カレントディレクトリ: $(pwd)"
+          echo ""
+
+          # コミットで変更されたファイルを検出
+          CHANGED_DOCX=""
+          CHANGED_MD=""
+
+          # .docxファイルの検出（プッシュされたファイルのみ、削除されたファイルは除外）
+          if [[ "${{ inputs.analyze_mode }}" != "markdown-only" ]]; then
+            echo "📄 Word(.docx)ファイルを検出中..."
+            CHANGED_DOCX=$(git diff --name-only --diff-filter=d HEAD~1 HEAD | grep -E '^minutes/.*\.docx$' || echo "")
+            CHANGED_DOCX=$(echo "$CHANGED_DOCX" | xargs)
+
+            if [ -n "$CHANGED_DOCX" ]; then
+              echo "検出されたWordファイル: '$CHANGED_DOCX'"
+            else
+              echo "プッシュされたWordファイルはありません"
+            fi
+          fi
+
+          # .mdファイルの検出（削除されたファイルは除外）
+          if [[ "${{ inputs.analyze_mode }}" != "word-only" ]]; then
+            echo ""
+            echo "📝 Markdown(.md)ファイルを検出中..."
+            CHANGED_MD=$(git diff --name-only --diff-filter=d HEAD~1 HEAD | grep -E '^minutes/.*\.md$' || echo "")
+
+            # 自動生成された.mdファイルを除外（[skip ci]メッセージを含むコミット）
+            if [ -n "$CHANGED_MD" ]; then
+              COMMIT_MSG=$(git log -1 --pretty=%B)
+              if [[ "$COMMIT_MSG" == *"[skip ci]"* ]]; then
+                echo "  ⏭️  自動生成コミットのため.mdファイルをスキップ"
+                CHANGED_MD=""
+              fi
+            fi
+
+            CHANGED_MD=$(echo "$CHANGED_MD" | xargs)
+            echo "検出されたMarkdownファイル: '$CHANGED_MD'"
+          fi
+
+          echo ""
+          echo "files_docx=$CHANGED_DOCX" >> $GITHUB_OUTPUT
+          echo "files_md=$CHANGED_MD" >> $GITHUB_OUTPUT
+
+          if [ -n "$CHANGED_DOCX" ]; then
+            echo "has_docx=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_docx=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -n "$CHANGED_MD" ]; then
+            echo "has_md=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_md=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -n "$CHANGED_DOCX" ] || [ -n "$CHANGED_MD" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Convert Word to Markdown
+        if: steps.changed_files.outputs.has_docx == 'true'
+        run: |
+          echo "=========================================="
+          echo "Word → Markdown 変換実行"
+          echo "=========================================="
+
+          for file in ${{ steps.changed_files.outputs.files_docx }}; do
+            if [ ! -f "$file" ]; then
+              echo "⚠️ ファイルが見つかりません: $file"
+              continue
+            fi
+
+            filename=$(basename -- "$file")
+            filename="${filename%.*}"
+            output_file="minutes/${filename}.md"
+
+            echo "📝 変換中: $file -> $output_file"
+            python scripts/docx_to_md.py "$file" "$output_file"
+
+            if [ $? -eq 0 ]; then
+              echo "✅ 変換成功: $output_file"
+            else
+              echo "❌ 変換失敗: $file"
+              exit 1
+            fi
+          done
+
+      - name: Commit converted Markdown files
+        if: steps.changed_files.outputs.has_docx == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # .mdファイルが存在する場合のみgit add
+          if ls minutes/*.md 1> /dev/null 2>&1; then
+            git add minutes/*.md
+          else
+            echo "⚠️ .mdファイルが見つかりません。スキップします。"
+            exit 0
+          fi
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "変更がないため、コミットをスキップ"
+          else
+            git commit -m "docs: Auto-convert minutes from Word to Markdown [skip ci]" \
+                       -m "Automatically converted by analyzer.yml reusable workflow"
+
+            # リモートの変更を取得してからpush
+            git pull --rebase origin ${{ github.ref_name }}
+            git push
+            echo "✅ Markdownファイルをコミット＆プッシュ"
+          fi
+
+      # ==================== 議事録解析 ====================
+
+      - name: Setup Node.js for analysis
+        if: steps.changed_files.outputs.has_changes == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node.js dependencies
+        if: steps.changed_files.outputs.has_changes == 'true'
+        run: npm ci
+
+      - name: Setup Google Cloud credentials
+        if: steps.changed_files.outputs.has_changes == 'true'
+        run: |
+          # FIREBASE_SERVICE_ACCOUNT_KEYを一時ファイルに保存
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > ${{ github.workspace }}/service-account-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/service-account-key.json" >> $GITHUB_ENV
+          echo "✅ Google Cloud認証情報を設定しました"
+
+      - name: Analyze minutes with AI
+        if: steps.changed_files.outputs.has_changes == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          PROJECT_ID: ${{ inputs.project_id }}
+        run: |
+          echo "=========================================="
+          echo "議事録AI解析実行"
+          echo "=========================================="
+
+          # 解析対象ファイルを収集
+          FILES_TO_ANALYZE=""
+
+          # 変換されたWordファイルに対応する.mdファイル
+          if [ -n "${{ steps.changed_files.outputs.files_docx }}" ]; then
+            for docx in ${{ steps.changed_files.outputs.files_docx }}; do
+              filename=$(basename -- "$docx")
+              filename="${filename%.*}"
+              md_file="minutes/${filename}.md"
+
+              if [ -f "$md_file" ]; then
+                FILES_TO_ANALYZE="$FILES_TO_ANALYZE $md_file"
+              fi
+            done
+          fi
+
+          # 直接プッシュされた.mdファイル
+          if [ -n "${{ steps.changed_files.outputs.files_md }}" ]; then
+            FILES_TO_ANALYZE="$FILES_TO_ANALYZE ${{ steps.changed_files.outputs.files_md }}"
+          fi
+
+          FILES_TO_ANALYZE=$(echo "$FILES_TO_ANALYZE" | xargs)
+
+          if [ -z "$FILES_TO_ANALYZE" ]; then
+            echo "⚠️ 解析対象のファイルがありません"
+            exit 0
+          fi
+
+          echo "📋 解析対象ファイル:"
+          echo "$FILES_TO_ANALYZE"
+          echo ""
+
+          # 各ファイルを解析
+          for md_file in $FILES_TO_ANALYZE; do
+            echo "🔍 解析中: $md_file"
+            node scripts/analyze-minutes.js \
+              --file "$md_file" \
+              --projectId "${{ inputs.project_id }}" \
+              --commit "${{ github.sha }}" \
+              --pushedBy "${{ github.actor }}"
+
+            if [ $? -eq 0 ]; then
+              echo "✅ 解析成功: $md_file"
+            else
+              echo "⚠️ 解析失敗: $md_file"
+            fi
+            echo ""
+          done
+
+      - name: Summary
+        if: steps.changed_files.outputs.has_changes == 'true'
+        run: |
+          echo "=========================================="
+          echo "✅ 議事録自動解析完了"
+          echo "=========================================="
+          echo ""
+          echo "📋 処理されたファイル:"
+
+          if [ -n "${{ steps.changed_files.outputs.files_docx }}" ]; then
+            echo ""
+            echo "📄 変換されたWordファイル:"
+            for docx in ${{ steps.changed_files.outputs.files_docx }}; do
+              filename=$(basename -- "$docx")
+              filename="${filename%.*}"
+              echo "  - $docx → minutes/${filename}.md"
+            done
+          fi
+
+          if [ -n "${{ steps.changed_files.outputs.files_md }}" ]; then
+            echo ""
+            echo "📝 直接解析されたMarkdownファイル:"
+            for md in ${{ steps.changed_files.outputs.files_md }}; do
+              echo "  - $md"
+            done
+          fi
+
+          echo ""
+          echo "🔍 AI解析も実行されました"
+          echo "👤 プッシュユーザー: ${{ github.actor }}"
+          echo "📝 コミット: ${{ github.sha }}"
+          echo ""
+          echo "🌐 アプリを開いて未承認議事録を確認してください"

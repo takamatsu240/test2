@@ -1,0 +1,113 @@
+name: Auto-Close Detector (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      project_id:
+        description: 'Firestore project ID (optional, for multi-tenant)'
+        required: false
+        type: string
+        default: ''
+      ai_analysis_enabled:
+        description: 'Enable AI-based commit analysis (Phase 3)'
+        required: false
+        type: boolean
+        default: true
+      ai_confidence_threshold:
+        description: 'AI confidence threshold (0.0-1.0)'
+        required: false
+        type: string
+        default: '0.7'
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT_KEY:
+        description: 'Firebase Service Account JSON Key'
+        required: true
+      OPENAI_API_KEY:
+        description: 'OpenAI API Key for GPT-4o'
+        required: true
+      GCP_PROJECT_ID:
+        description: 'Google Cloud Project ID'
+        required: true
+      GCP_WIF_PROVIDER:
+        description: 'GCP Workload Identity Provider'
+        required: false
+      GCP_SA_EMAIL:
+        description: 'GCP Service Account Email'
+        required: false
+
+jobs:
+  auto-close:
+    name: Detect and Close Completed Todos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50  # 直近50コミットを取得
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Google Cloud credentials
+        run: |
+          # FIREBASE_SERVICE_ACCOUNT_KEYを一時ファイルに保存
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > ${{ github.workspace }}/service-account-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/service-account-key.json" >> $GITHUB_ENV
+          echo "✅ Google Cloud認証情報を設定しました"
+
+      - name: Run 3-Phase Auto-Close Detection
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          PROJECT_ID: ${{ inputs.project_id }}
+          REPOSITORY: ${{ github.repository }}
+          AI_ANALYSIS_ENABLED: ${{ inputs.ai_analysis_enabled }}
+          AI_CONFIDENCE_THRESHOLD: ${{ inputs.ai_confidence_threshold }}
+          PHASE2_AI_ENABLED: 'true'
+          PHASE2_CONFIDENCE_THRESHOLD: '0.5'
+        run: |
+          echo "=========================================="
+          echo "🤖 3段階ハイブリッド自動クローズ判定"
+          echo "=========================================="
+          echo "📝 コミット: ${{ github.sha }}"
+          echo "👤 プッシュユーザー: ${{ github.actor }}"
+          echo "📁 リポジトリ: ${{ github.repository }}"
+          echo "🏢 プロジェクトID: ${{ inputs.project_id || '(デフォルト)' }}"
+          echo "🤖 AI解析: ${{ inputs.ai_analysis_enabled }}"
+          echo "📊 AI信頼度閾値: ${{ inputs.ai_confidence_threshold }}"
+          echo ""
+
+          node tests/analyze-commit.js
+
+          echo ""
+          echo "✅ 自動クローズ判定完了"
+          echo ""
+          echo "📋 判定方式:"
+          echo "  Phase 1: コミットメッセージ解析（確実性100%） → 完全クローズ"
+          echo "  Phase 2: ファイル名照合 + 軽量AI判定（信頼度 ≥ 0.5） → クローズ候補"
+          echo "  Phase 3: 完全AI差分解析（GPT-4o、信頼度 ≥ 0.7） → クローズ候補"
+          echo ""
+          echo "🌐 アプリを開いてToDoのクローズ候補を確認してください"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "📊 自動クローズ判定サマリー"
+          echo "=========================================="
+          echo "📝 コミット: ${{ github.sha }}"
+          echo "🌿 ブランチ: ${{ github.ref_name }}"
+          echo "👤 プッシュユーザー: ${{ github.actor }}"
+          echo ""
+          echo "詳細なログは上記の「Run 3-Phase Auto-Close Detection」ステップを確認してください"

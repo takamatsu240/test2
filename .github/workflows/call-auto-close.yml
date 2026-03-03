@@ -1,0 +1,59 @@
+name: Call Auto-Close Detector
+
+# このファイルは「呼び出し側」です。
+# フィーチャーブランチでコミットすると、auto-close.yml（実体側）を呼び出してToDoの自動クローズ判定を実行します。
+
+on:
+  push:
+    # main/masterブランチ以外で実行（フィーチャーブランチでのみ）
+    branches-ignore:
+      - main
+      - master
+    # 除外パターン: ドキュメントのみの変更は自動クローズ判定をスキップ
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'minutes/**'
+  pull_request:
+    # プルリクエスト作成時・更新時にも実行
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'minutes/**'
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Project ID (optional)'
+        required: false
+        type: string
+        default: ''
+      ai_analysis_enabled:
+        description: 'Enable AI analysis'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  call-auto-close:
+    name: Auto-Close Todos (via Reusable Workflow)
+    # [skip ci] を含むコミットはスキップ
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # CHANGEME: 同一リポジトリ内の実体ワークフローを呼び出します
+    uses: ./.github/workflows/auto-close.yml
+    with:
+      # CHANGEME: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
+      project_id: ${{ inputs.project_id || '' }}
+      ai_analysis_enabled: ${{ inputs.ai_analysis_enabled || true }}
+      ai_confidence_threshold: '0.7'
+    secrets:
+      # CHANGEME: 以下のシークレットをGitHubリポジトリのSettings > Secrets and variablesに登録してください
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL }}

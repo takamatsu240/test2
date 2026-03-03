@@ -1,0 +1,48 @@
+name: Call Minutes Analyzer
+
+# このファイルは「呼び出し側」です。
+# minutes/ フォルダにWord(.docx)またはMarkdown(.md)ファイルをプッシュすると、
+# analyzer.yml（実体側）を呼び出して議事録のAI解析を実行します。
+
+on:
+  push:
+    # main/masterブランチ以外で実行（フィーチャーブランチでのみ）
+    branches-ignore:
+      - main
+      - master
+    # 議事録ファイルの変更を検出
+    paths:
+      - 'minutes/**/*.docx'
+      - 'minutes/**/*.md'
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Project ID (optional)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  call-analyzer:
+    name: Analyze Minutes (via Reusable Workflow)
+    # [skip ci] を含むコミットはスキップ
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # CHANGEME: 同一リポジトリ内の実体ワークフローを呼び出します
+    uses: ./.github/workflows/analyzer.yml
+    with:
+      # CHANGEME: 議事録ファイルのパスパターン（必要に応じて変更）
+      files_pattern: 'minutes/**/*.{docx,md}'
+      # CHANGEME: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
+      project_id: ${{ inputs.project_id || '' }}
+      analyze_mode: 'auto'
+    secrets:
+      # CHANGEME: 以下のシークレットをGitHubリポジトリのSettings > Secrets and variablesに登録してください
+      FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
