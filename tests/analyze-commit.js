@@ -13,7 +13,7 @@
 require('dotenv').config();
 const { execSync } = require('child_process');
 const { firestore, COLLECTIONS, admin } = require('../firestore-client');
-const minimatch = require('minimatch');
+const { minimatch } = require('minimatch');
 
 // ==================== 設定 ====================
 
