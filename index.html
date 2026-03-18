@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>メモアプリ - モダンノート</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>メモアプリ</h1>
+            <p>アイデアを美しく保存</p>
+            <div class="header-actions">
+                <button class="btn btn-icon" onclick="app.toggleTheme()" title="テーマ切り替え">
+                    <span id="themeIcon">🌙</span>
+                </button>
+                <button class="btn btn-icon" onclick="app.showSearchModal()" title="検索">
+                    🔍
+                </button>
+                <button class="btn btn-icon" onclick="app.exportData()" title="エクスポート">
+                    💾
+                </button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="calendar-container">
+                    <div class="calendar-header">
+                        <h2 id="calendarMonth"></h2>
+                        <div class="calendar-nav">
+                            <button id="prevMonth">‹</button>
+                            <button id="nextMonth">›</button>
+                        </div>
+                    </div>
+                    <div class="calendar-weekdays">
+                        <div class="calendar-weekday">日</div>
+                        <div class="calendar-weekday">月</div>
+                        <div class="calendar-weekday">火</div>
+                        <div class="calendar-weekday">水</div>
+                        <div class="calendar-weekday">木</div>
+                        <div class="calendar-weekday">金</div>
+                        <div class="calendar-weekday">土</div>
+                    </div>
+                    <div class="calendar-days" id="calendarDays"></div>
+                </div>
+
+                <div class="categories-container">
+                    <h3>カテゴリ</h3>
+                    <div class="category-list" id="categoryList"></div>
+                    <button class="btn btn-secondary" onclick="app.addCategory()">
+                        + カテゴリ追加
+                    </button>
+                </div>
+
+                <div class="filter-info" id="filterInfo" style="display: none;">
+                    <p id="filterText"></p>
+                    <button class="clear-filter" onclick="app.clearFilter()">
+                        フィルターをクリア
+                    </button>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <div class="memo-form">
+                    <form id="memoForm">
+                        <div class="form-group">
+                            <input
+                                type="text"
+                                id="memoTitle"
+                                placeholder="タイトルを入力..."
+                                required
+                            >
+                        </div>
+                        <div class="form-group">
+                            <textarea
+                                id="memoContent"
+                                placeholder="メモの内容を入力..."
+                                required
+                            ></textarea>
+                        </div>
+                        <div class="form-group">
+                            <select id="memoCategory">
+                                <option value="">カテゴリを選択（任意）</option>
+                            </select>
+                        </div>
+                        <div class="form-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="memoPinned">
+                                <span>ピン留めする</span>
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            メモを追加
+                        </button>
+                    </form>
+                </div>
+
+                <div class="memos-list" id="memosList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 検索モーダル -->
+    <div class="modal" id="searchModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>メモを検索</h2>
+                <button class="modal-close" onclick="app.closeSearchModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="タイトルまたは内容で検索..."
+                    class="search-input"
+                >
+                <div id="searchResults" class="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- インポートモーダル -->
+    <input type="file" id="importFile" accept=".json" style="display: none;" onchange="app.importData(event)">
+
+    <script src="storage.js"></script>
+    <script src="calendar.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
