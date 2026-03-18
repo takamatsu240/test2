@@ -28,7 +28,7 @@ const EXCLUDED_PATTERNS = [
   'yarn.lock',
   'pnpm-lock.yaml',
   'composer.lock',
-
+  
   // 環境設定・機密情報
   '.env',
   '.env.local',
@@ -40,7 +40,7 @@ const EXCLUDED_PATTERNS = [
   '*.p12',
   'service-account-key.json',
   'credentials.json',
-
+  
   // アセット/バイナリ
   '*.png',
   '*.jpg',
@@ -53,7 +53,7 @@ const EXCLUDED_PATTERNS = [
   '*.woff2',
   '*.ttf',
   '*.eot',
-
+  
   // ビルド成果物
   'dist/*',
   'build/*',
@@ -61,7 +61,7 @@ const EXCLUDED_PATTERNS = [
   'vendor/*',
   '.next/*',
   'out/*',
-
+  
   // システムファイル
   '.DS_Store',
   '.gitignore',
@@ -92,11 +92,11 @@ function getLatestCommit() {
   const message = execGit('git log -1 --pretty=%B');
   const author = execGit('git log -1 --pretty=%an');
   const date = execGit('git log -1 --pretty=%ci');
-
+  
   if (!hash || !message) {
     return null;
   }
-
+  
   return { hash, message, author, date };
 }
 
@@ -117,6 +117,17 @@ function getChangedFiles(commitHash) {
   if (!output) return [];
 
   return output.split('\n').filter(f => f.trim() !== '');
+}
+
+/**
+ * 特定ファイルの全体内容を取得（Phase 2用）
+ * 差分ではなくファイル全体を取得
+ */
+function getFileContent(commitHash, filePath) {
+  // コミット時点のファイル全体を取得
+  const content = execGit(`git show ${commitHash}:"${filePath}"`);
+
+  return content || '';
 }
 
 /**
@@ -342,7 +353,7 @@ async function markAsCloseCandidate(todoNo, params) {
   try {
     // ToDoの存在確認
     const todoDoc = await firestore.collection(COLLECTIONS.TODOS).doc(todoNo).get();
-
+    
     if (!todoDoc.exists) {
       throw new Error(`ToDo ${todoNo} が見つかりません`);
     }
@@ -351,16 +362,16 @@ async function markAsCloseCandidate(todoNo, params) {
 
     // クローズ候補フラグをONに更新
     todo.クローズ候補 = 'ON';
-
+    
     // ステータス更新
     if (params.status) {
       if (['closed', 'in_progress', 'review_pending'].includes(params.status)) {
-        todo.ステータス = params.status === 'closed' ? 'クローズ' :
+        todo.ステータス = params.status === 'closed' ? 'クローズ' : 
                           params.status === 'in_progress' ? '作業中' :
                           '確認待ち';
       }
     }
-
+    
     // AI解析結果を保存
     if (params.aiAnalysis) {
       todo.aiAnalysis = {
@@ -387,18 +398,18 @@ async function markAsCloseCandidate(todoNo, params) {
       送信内容: params.aiAnalysis?.contentType || ''
     };
     todo.判定履歴.push(historyEntry);
-
+    
     // クローズ日の設定
     if (params.status === 'closed') {
       todo.クローズ日 = new Date().toISOString().split('T')[0];
     }
-
+    
     // 更新日を設定
     todo.更新日 = new Date().toISOString().split('T')[0];
-
+    
     // Firestoreに保存
     await firestore.collection(COLLECTIONS.TODOS).doc(todoNo).set(todo, { merge: true });
-
+    
     return { success: true, todo };
   } catch (error) {
     console.error(`❌ クローズ候補マークエラー (${todoNo}):`, error.message);
@@ -490,14 +501,17 @@ ${codeContent}
 
     const result = JSON.parse(completion.choices[0].message.content);
 
-    // 大きいファイル（部分的な表示）の場合は強制的にinsufficient判定
+    // 大きいファイル（部分的な表示）の場合、AIの判定を尊重しつつ慎重に扱う
     if (isPartialView) {
+      // perfectはOKにダウングレード、OK/insufficientはそのまま
+      const adjustedCompleteness = result.completeness === 'perfect' ? 'OK' : result.completeness;
+
       return {
-        completeness: 'insufficient',
+        completeness: adjustedCompleteness || 'insufficient',
         has_code: result.has_code || false,
         is_functional: result.is_functional || false,
-        reason: `ファイルが大きいため全体を確認できませんでした。${result.reason || ''}`.substring(0, 100),
-        missing: result.missing || 'ファイル全体の確認',
+        reason: `[部分表示] ${result.reason || ''}`.substring(0, 100),
+        missing: result.missing || '全体確認推奨',
         contentType: contentType,
         isPartialView: true
       };
@@ -531,18 +545,18 @@ ${codeContent}
 
 function phase2_matchByFileName(changedFiles, unclosedTodos) {
   const matched = [];
-
+  
   for (const todo of unclosedTodos) {
     // 判定対象情報から成果物ファイル名を取得
     const targetFile = todo.判定対象情報?.成果物ファイル名;
-
+    
     if (!targetFile || targetFile.trim() === '') {
       continue; // 成果物ファイル名が設定されていない
     }
-
+    
     let isMatch = false;
     let matchedFile = null;
-
+    
     // ワイルドカードパターン（**, *, ?）が含まれている場合
     if (targetFile.includes('*') || targetFile.includes('?')) {
       // グロブパターンマッチング（minimatch使用）
@@ -563,7 +577,7 @@ function phase2_matchByFileName(changedFiles, unclosedTodos) {
         }
       }
     }
-
+    
     if (isMatch) {
       matched.push({
         todoNo: todo.ToDoNo,
@@ -572,7 +586,7 @@ function phase2_matchByFileName(changedFiles, unclosedTodos) {
       });
     }
   }
-
+  
   return matched;
 }
 
@@ -588,7 +602,7 @@ async function main() {
   // 最新コミット情報を取得
   console.log('📝 最新のコミット情報を取得中...');
   const commit = getLatestCommit();
-
+  
   if (!commit) {
     console.log('❌ コミット情報の取得に失敗しました。');
     process.exit(1);
@@ -602,10 +616,10 @@ async function main() {
   console.log('📂 変更ファイルを取得中...');
   const changedFiles = getChangedFiles(commit.hash);
   const filteredFiles = filterExcludedFiles(changedFiles);
-
+  
   console.log(`✓ 変更ファイル: ${changedFiles.length}件`);
   console.log(`✓ 解析対象: ${filteredFiles.length}件（除外: ${changedFiles.length - filteredFiles.length}件）`);
-
+  
   if (filteredFiles.length > 0) {
     console.log('  - ' + filteredFiles.slice(0, 5).join('\n  - '));
     if (filteredFiles.length > 5) {
@@ -793,7 +807,7 @@ async function main() {
   console.log('=========================================');
   console.log('📊 統合結果');
   console.log('=========================================');
-
+  
   if (results.size === 0) {
     console.log('ℹ️  該当するToDoが見つかりませんでした。');
     console.log('');
@@ -804,21 +818,21 @@ async function main() {
   }
 
   console.log(`✓ ${results.size}件のToDoをクローズ候補にマークします:\n`);
-
+  
   for (const [todoNo, data] of results) {
     console.log(`  【${todoNo}】`);
     console.log(`    判定: ${data.phase}`);
     console.log(`    アクション: クローズ候補マーク（レビュー必須）`);
     console.log(`    理由: ${data.reason}`);
     if (data.aiAnalysis) {
-      console.log(`    AI完成度: ${data.aiAnalysis.completeness}`);
+      console.log(`    AI信頼度: ${(data.aiAnalysis.confidence * 100).toFixed(0)}%`);
     }
     console.log('');
   }
 
   // ==================== API呼び出し ====================
   console.log('🚀 クローズ候補判定APIを呼び出し中...');
-
+  
   let successCount = 0;
   let errorCount = 0;
 
@@ -843,9 +857,9 @@ async function main() {
 
   if (successCount > 0) {
     console.log('📌 次のステップ:');
-    console.log('1. アプリのダッシュボードを開く');
-    console.log('2. 「クローズ候補」セクションを確認');
-    console.log('3. 該当ToDoをレビューしてクローズ');
+    console.log('1. ブラウザで http://localhost:3001 を開く');
+    console.log('2. ダッシュボードの「クローズ候補」セクションを確認');
+    console.log('3. 該当ToDoをワンクリックでクローズ');
     console.log('');
   }
 
