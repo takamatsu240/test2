@@ -49,7 +49,6 @@ jobs:
       # CHANGEME: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
       project_id: ${{ inputs.project_id || '' }}
       ai_analysis_enabled: ${{ inputs.ai_analysis_enabled || true }}
-      ai_confidence_threshold: '0.7'
     secrets:
       # CHANGEME: 以下のシークレットをGitHubリポジトリのSettings > Secrets and variablesに登録してください
       FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
