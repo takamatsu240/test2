@@ -176,13 +176,17 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
 
-          # .mdファイルが存在する場合のみgit add
-          if ls minutes/*.md 1> /dev/null 2>&1; then
-            git add minutes/*.md
-          else
-            echo "⚠️ .mdファイルが見つかりません。スキップします。"
-            exit 0
-          fi
+          # 変換されたファイルだけを追加
+          for docx_file in ${{ steps.changed_files.outputs.files_docx }}; do
+            filename=$(basename -- "$docx_file")
+            filename="${filename%.*}"
+            md_file="minutes/${filename}.md"
+
+            if [ -f "$md_file" ]; then
+              git add "$md_file"
+              echo "📝 追加: $md_file"
+            fi
+          done
 
           if git diff --quiet && git diff --staged --quiet; then
             echo "変更がないため、コミットをスキップ"
