@@ -13,7 +13,7 @@
 require('dotenv').config();
 const { execSync } = require('child_process');
 const { firestore, COLLECTIONS, admin } = require('../firestore-client');
-const minimatch = require('minimatch');
+const { minimatch } = require('minimatch');
 
 // ==================== 設定 ====================
 
@@ -490,14 +490,17 @@ ${codeContent}
 
     const result = JSON.parse(completion.choices[0].message.content);
 
-    // 大きいファイル（部分的な表示）の場合は強制的にinsufficient判定
+    // 大きいファイル（部分的な表示）の場合、AIの判定を尊重しつつ慎重に扱う
     if (isPartialView) {
+      // perfectはOKにダウングレード、OK/insufficientはそのまま
+      const adjustedCompleteness = result.completeness === 'perfect' ? 'OK' : result.completeness;
+
       return {
-        completeness: 'insufficient',
+        completeness: adjustedCompleteness || 'insufficient',
         has_code: result.has_code || false,
         is_functional: result.is_functional || false,
-        reason: `ファイルが大きいため全体を確認できませんでした。${result.reason || ''}`.substring(0, 100),
-        missing: result.missing || 'ファイル全体の確認',
+        reason: `[部分表示] ${result.reason || ''}`.substring(0, 100),
+        missing: result.missing || '全体確認推奨',
         contentType: contentType,
         isPartialView: true
       };
