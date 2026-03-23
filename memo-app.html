@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>シンプルメモアプリ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .input-section {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        #memoTitle {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        #memoTitle:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        #memoContent {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 100px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        #memoContent:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        #addBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        #addBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #addBtn:active {
+            transform: translateY(0);
+        }
+
+        .memo-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .memo-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .memo-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .memo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .memo-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .memo-date {
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        .memo-content {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+        }
+
+        .memo-footer {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .delete-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .delete-btn:hover {
+            background: #ff3838;
+        }
+
+        .empty-message {
+            text-align: center;
+            color: white;
+            font-size: 1.2rem;
+            margin-top: 50px;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .input-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>メモアプリ</h1>
+
+        <div class="input-section">
+            <div class="input-group">
+                <input type="text" id="memoTitle" placeholder="タイトルを入力...">
+            </div>
+            <textarea id="memoContent" placeholder="メモの内容を入力..."></textarea>
+            <button id="addBtn">メモを追加</button>
+        </div>
+
+        <div id="memoList" class="memo-list"></div>
+    </div>
+
+    <script>
+        class MemoApp {
+            constructor() {
+                this.memos = this.loadMemos();
+                this.init();
+            }
+
+            init() {
+                document.getElementById('addBtn').addEventListener('click', () => this.addMemo());
+                document.getElementById('memoTitle').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        document.getElementById('memoContent').focus();
+                    }
+                });
+                document.getElementById('memoContent').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && e.ctrlKey) {
+                        this.addMemo();
+                    }
+                });
+                this.render();
+            }
+
+            addMemo() {
+                const title = document.getElementById('memoTitle').value.trim();
+                const content = document.getElementById('memoContent').value.trim();
+
+                if (!title && !content) {
+                    alert('タイトルまたは内容を入力してください');
+                    return;
+                }
+
+                const memo = {
+                    id: Date.now(),
+                    title: title || '無題',
+                    content: content,
+                    date: new Date().toLocaleString('ja-JP')
+                };
+
+                this.memos.unshift(memo);
+                this.saveMemos();
+                this.render();
+
+                document.getElementById('memoTitle').value = '';
+                document.getElementById('memoContent').value = '';
+                document.getElementById('memoTitle').focus();
+            }
+
+            deleteMemo(id) {
+                if (confirm('このメモを削除しますか？')) {
+                    this.memos = this.memos.filter(memo => memo.id !== id);
+                    this.saveMemos();
+                    this.render();
+                }
+            }
+
+            render() {
+                const memoList = document.getElementById('memoList');
+
+                if (this.memos.length === 0) {
+                    memoList.innerHTML = '<div class="empty-message">メモがまだありません。最初のメモを追加してください！</div>';
+                    return;
+                }
+
+                memoList.innerHTML = this.memos.map(memo => `
+                    <div class="memo-item">
+                        <div class="memo-header">
+                            <div class="memo-title">${this.escapeHtml(memo.title)}</div>
+                            <div class="memo-date">${memo.date}</div>
+                        </div>
+                        <div class="memo-content">${this.escapeHtml(memo.content)}</div>
+                        <div class="memo-footer">
+                            <button class="delete-btn" onclick="app.deleteMemo(${memo.id})">削除</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            saveMemos() {
+                localStorage.setItem('memos', JSON.stringify(this.memos));
+            }
+
+            loadMemos() {
+                const saved = localStorage.getItem('memos');
+                return saved ? JSON.parse(saved) : [];
+            }
+        }
+
+        const app = new MemoApp();
+    </script>
+</body>
+</html>
