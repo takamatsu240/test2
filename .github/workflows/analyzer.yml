@@ -194,8 +194,8 @@ jobs:
             git commit -m "docs: Auto-convert minutes from Word to Markdown [skip ci]" \
                        -m "Automatically converted by analyzer.yml reusable workflow"
 
-            # リモートの変更を取得してからpush
-            git pull --rebase origin ${{ github.ref_name }}
+            # リモートの変更を取得してからpush（未ステージの変更は自動stash）
+            git pull --rebase --autostash origin ${{ github.ref_name }}
             git push
             echo "✅ Markdownファイルをコミット＆プッシュ"
           fi
