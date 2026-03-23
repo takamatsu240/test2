@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>シンプルメモアプリ</title>
+    <title>メモアプリ Pro</title>
     <style>
         * {
             margin: 0;
@@ -19,16 +19,47 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
         }
 
         h1 {
             color: white;
-            text-align: center;
-            margin-bottom: 30px;
             font-size: 2.5rem;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.95rem;
+        }
+
+        .search-section {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        #searchInput {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        #searchInput:focus {
+            outline: none;
+            border-color: #667eea;
         }
 
         .input-section {
@@ -45,7 +76,7 @@
             margin-bottom: 15px;
         }
 
-        #memoTitle {
+        #memoTitle, .edit-title-input {
             flex: 1;
             padding: 12px 15px;
             border: 2px solid #e0e0e0;
@@ -54,12 +85,12 @@
             transition: border-color 0.3s;
         }
 
-        #memoTitle:focus {
+        #memoTitle:focus, .edit-title-input:focus {
             outline: none;
             border-color: #667eea;
         }
 
-        #memoContent {
+        #memoContent, .edit-content-textarea {
             width: 100%;
             padding: 12px 15px;
             border: 2px solid #e0e0e0;
@@ -71,7 +102,7 @@
             transition: border-color 0.3s;
         }
 
-        #memoContent:focus {
+        #memoContent:focus, .edit-content-textarea:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -110,6 +141,17 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
             animation: slideIn 0.3s ease-out;
+            position: relative;
+        }
+
+        .memo-item.pinned {
+            background: linear-gradient(135deg, #fff9e6 0%, #fffbf0 100%);
+            border-left: 4px solid #f39c12;
+        }
+
+        .memo-item.editing {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
         }
 
         @keyframes slideIn {
@@ -128,22 +170,38 @@
             box-shadow: 0 8px 20px rgba(0,0,0,0.15);
         }
 
+        .pin-icon {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 1.2rem;
+            opacity: 0.3;
+        }
+
+        .memo-item.pinned .pin-icon {
+            opacity: 1;
+        }
+
         .memo-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 10px;
+            padding-right: 30px;
         }
 
         .memo-title {
             font-size: 1.2rem;
             font-weight: bold;
             color: #333;
+            flex: 1;
         }
 
         .memo-date {
             font-size: 0.85rem;
             color: #999;
+            white-space: nowrap;
+            margin-left: 15px;
         }
 
         .memo-content {
@@ -156,21 +214,70 @@
         .memo-footer {
             display: flex;
             justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn {
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .edit-btn {
+            background: #3498db;
+            color: white;
+        }
+
+        .edit-btn:hover {
+            background: #2980b9;
+        }
+
+        .pin-btn {
+            background: #f39c12;
+            color: white;
+        }
+
+        .pin-btn:hover {
+            background: #e67e22;
+        }
+
+        .save-btn {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .save-btn:hover {
+            background: #27ae60;
+        }
+
+        .cancel-btn {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .cancel-btn:hover {
+            background: #7f8c8d;
         }
 
         .delete-btn {
             background: #ff4757;
             color: white;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
         }
 
         .delete-btn:hover {
             background: #ff3838;
+        }
+
+        .edit-form {
+            margin-bottom: 15px;
+        }
+
+        .edit-form .input-group {
+            margin-bottom: 10px;
         }
 
         .empty-message {
@@ -186,22 +293,56 @@
                 font-size: 2rem;
             }
 
-            .input-section {
-                padding: 20px;
+            .input-section, .search-section {
+                padding: 15px;
+            }
+
+            .memo-item {
+                padding: 15px;
+            }
+
+            .memo-title {
+                font-size: 1rem;
+            }
+
+            .memo-footer {
+                flex-wrap: wrap;
+            }
+
+            .btn {
+                font-size: 12px;
+                padding: 6px 12px;
+            }
+
+            .memo-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .memo-date {
+                margin-left: 0;
+                margin-top: 5px;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>メモアプリ</h1>
+        <div class="header">
+            <h1>📝 メモアプリ Pro</h1>
+            <div class="stats" id="stats">メモ: 0件</div>
+        </div>
+
+        <div class="search-section">
+            <input type="text" id="searchInput" placeholder="🔍 メモを検索...">
+        </div>
 
         <div class="input-section">
             <div class="input-group">
                 <input type="text" id="memoTitle" placeholder="タイトルを入力...">
             </div>
-            <textarea id="memoContent" placeholder="メモの内容を入力..."></textarea>
-            <button id="addBtn">メモを追加</button>
+            <textarea id="memoContent" placeholder="メモの内容を入力...（Ctrl+Enterで追加）"></textarea>
+            <button id="addBtn">➕ メモを追加</button>
         </div>
 
         <div id="memoList" class="memo-list"></div>
@@ -211,11 +352,17 @@
         class MemoApp {
             constructor() {
                 this.memos = this.loadMemos();
+                this.searchQuery = '';
+                this.editingId = null;
                 this.init();
             }
 
             init() {
                 document.getElementById('addBtn').addEventListener('click', () => this.addMemo());
+                document.getElementById('searchInput').addEventListener('input', (e) => {
+                    this.searchQuery = e.target.value.toLowerCase();
+                    this.render();
+                });
                 document.getElementById('memoTitle').addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
                         document.getElementById('memoContent').focus();
@@ -227,6 +374,7 @@
                     }
                 });
                 this.render();
+                this.updateStats();
             }
 
             addMemo() {
@@ -242,16 +390,61 @@
                     id: Date.now(),
                     title: title || '無題',
                     content: content,
-                    date: new Date().toLocaleString('ja-JP')
+                    date: new Date().toLocaleString('ja-JP'),
+                    pinned: false
                 };
 
                 this.memos.unshift(memo);
                 this.saveMemos();
                 this.render();
+                this.updateStats();
 
                 document.getElementById('memoTitle').value = '';
                 document.getElementById('memoContent').value = '';
                 document.getElementById('memoTitle').focus();
+            }
+
+            editMemo(id) {
+                this.editingId = id;
+                this.render();
+            }
+
+            saveEdit(id) {
+                const titleInput = document.querySelector(`#edit-title-${id}`);
+                const contentInput = document.querySelector(`#edit-content-${id}`);
+
+                const title = titleInput.value.trim();
+                const content = contentInput.value.trim();
+
+                if (!title && !content) {
+                    alert('タイトルまたは内容を入力してください');
+                    return;
+                }
+
+                const memo = this.memos.find(m => m.id === id);
+                if (memo) {
+                    memo.title = title || '無題';
+                    memo.content = content;
+                    memo.date = new Date().toLocaleString('ja-JP') + ' (編集済)';
+                }
+
+                this.editingId = null;
+                this.saveMemos();
+                this.render();
+            }
+
+            cancelEdit() {
+                this.editingId = null;
+                this.render();
+            }
+
+            togglePin(id) {
+                const memo = this.memos.find(m => m.id === id);
+                if (memo) {
+                    memo.pinned = !memo.pinned;
+                    this.saveMemos();
+                    this.render();
+                }
             }
 
             deleteMemo(id) {
@@ -259,29 +452,92 @@
                     this.memos = this.memos.filter(memo => memo.id !== id);
                     this.saveMemos();
                     this.render();
+                    this.updateStats();
                 }
+            }
+
+            getFilteredMemos() {
+                let filtered = this.memos;
+
+                if (this.searchQuery) {
+                    filtered = filtered.filter(memo =>
+                        memo.title.toLowerCase().includes(this.searchQuery) ||
+                        memo.content.toLowerCase().includes(this.searchQuery)
+                    );
+                }
+
+                return filtered.sort((a, b) => {
+                    if (a.pinned && !b.pinned) return -1;
+                    if (!a.pinned && b.pinned) return 1;
+                    return 0;
+                });
             }
 
             render() {
                 const memoList = document.getElementById('memoList');
+                const filteredMemos = this.getFilteredMemos();
 
-                if (this.memos.length === 0) {
-                    memoList.innerHTML = '<div class="empty-message">メモがまだありません。最初のメモを追加してください！</div>';
+                if (filteredMemos.length === 0) {
+                    if (this.searchQuery) {
+                        memoList.innerHTML = '<div class="empty-message">検索結果が見つかりませんでした</div>';
+                    } else {
+                        memoList.innerHTML = '<div class="empty-message">メモがまだありません。最初のメモを追加してください！</div>';
+                    }
                     return;
                 }
 
-                memoList.innerHTML = this.memos.map(memo => `
-                    <div class="memo-item">
+                memoList.innerHTML = filteredMemos.map(memo => {
+                    if (this.editingId === memo.id) {
+                        return this.renderEditMode(memo);
+                    }
+                    return this.renderViewMode(memo);
+                }).join('');
+            }
+
+            renderViewMode(memo) {
+                return `
+                    <div class="memo-item ${memo.pinned ? 'pinned' : ''}">
+                        ${memo.pinned ? '<div class="pin-icon">📌</div>' : ''}
                         <div class="memo-header">
                             <div class="memo-title">${this.escapeHtml(memo.title)}</div>
                             <div class="memo-date">${memo.date}</div>
                         </div>
                         <div class="memo-content">${this.escapeHtml(memo.content)}</div>
                         <div class="memo-footer">
-                            <button class="delete-btn" onclick="app.deleteMemo(${memo.id})">削除</button>
+                            <button class="btn pin-btn" onclick="app.togglePin(${memo.id})">
+                                ${memo.pinned ? '📌 ピン解除' : '📌 ピン留め'}
+                            </button>
+                            <button class="btn edit-btn" onclick="app.editMemo(${memo.id})">✏️ 編集</button>
+                            <button class="btn delete-btn" onclick="app.deleteMemo(${memo.id})">🗑️ 削除</button>
                         </div>
                     </div>
-                `).join('');
+                `;
+            }
+
+            renderEditMode(memo) {
+                return `
+                    <div class="memo-item editing">
+                        <div class="edit-form">
+                            <div class="input-group">
+                                <input type="text" id="edit-title-${memo.id}" class="edit-title-input"
+                                       value="${this.escapeHtml(memo.title)}" placeholder="タイトルを入力...">
+                            </div>
+                            <textarea id="edit-content-${memo.id}" class="edit-content-textarea"
+                                      placeholder="メモの内容を入力...">${this.escapeHtml(memo.content)}</textarea>
+                        </div>
+                        <div class="memo-footer">
+                            <button class="btn cancel-btn" onclick="app.cancelEdit()">❌ キャンセル</button>
+                            <button class="btn save-btn" onclick="app.saveEdit(${memo.id})">💾 保存</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            updateStats() {
+                const totalMemos = this.memos.length;
+                const pinnedMemos = this.memos.filter(m => m.pinned).length;
+                const statsText = `メモ: ${totalMemos}件${pinnedMemos > 0 ? ` (📌 ${pinnedMemos}件)` : ''}`;
+                document.getElementById('stats').textContent = statsText;
             }
 
             escapeHtml(text) {
