@@ -31,16 +31,16 @@ jobs:
     name: Analyze Minutes (via Reusable Workflow)
     # [skip ci] を含むコミットはスキップ
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    # CHANGEME: 同一リポジトリ内の実体ワークフローを呼び出します
+    # NOTE: 同一リポジトリ内の実体ワークフローを呼び出します
     uses: ./.github/workflows/analyzer.yml
     with:
-      # CHANGEME: 議事録ファイルのパスパターン（必要に応じて変更）
+      # NOTE: 議事録ファイルのパスパターン（必要に応じて変更）
       files_pattern: 'minutes/**/*.{docx,md}'
-      # CHANGEME: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
+      # NOTE: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
       project_id: ${{ inputs.project_id || '' }}
       analyze_mode: 'auto'
     secrets:
-      # CHANGEME: 以下のシークレットをGitHubリポジトリのSettings > Secrets and variablesに登録してください
+      # NOTE: 以下のシークレットがGitHubリポジトリのSettings > Secrets and variablesに登録されている必要があります
       FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}

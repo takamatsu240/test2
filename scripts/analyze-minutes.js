@@ -403,6 +403,116 @@ async function findProjectByName(projectName) {
   }
 }
 
+
+/**
+ * 解析結果を新規/更新/自動クローズに分類
+ */
+function classifyAnalysisResult(analysisResult, existingIssues, existingTodos) {
+  const classified = {
+    newIssues: [],
+    updatedIssues: [],
+    newTodos: [],
+    updatedTodos: [],
+    autoClosedIssues: [],
+    autoClosedTodos: []
+  };
+
+  // 課題の分類
+  if (analysisResult.issues) {
+    analysisResult.issues.forEach((issue, index) => {
+      if (issue.既存課題No) {
+        const existing = existingIssues.find(i => i.課題No === issue.既存課題No);
+        if (existing) {
+          // デフォルト値を設定（既存データがない場合のみ）
+          if (!issue.ステータス) issue.ステータス = existing.ステータス || '起票';
+          if (!issue.クローズ候補) issue.クローズ候補 = existing.クローズ候補 || 'OFF';
+          if (!issue.重要度) issue.重要度 = existing.重要度 || '中';
+
+          // 表示用には既存データとマージ
+          const displayData = { ...existing, ...issue };
+          const updateData = {
+            課題No: issue.既存課題No,
+            ...issue,
+            _isUpdate: true,
+            _displayData: displayData
+          };
+          delete updateData.既存課題No;
+
+          // クローズ候補が「ON」の場合は自動クローズ対象
+          if (issue.クローズ候補 === 'ON') {
+            classified.autoClosedIssues.push(updateData);
+          } else {
+            classified.updatedIssues.push(updateData);
+          }
+        } else {
+          // 既存課題Noが指定されているが見つからない場合は新規として扱う
+          if (!issue.ステータス) issue.ステータス = '起票';
+          if (!issue.クローズ候補) issue.クローズ候補 = 'OFF';
+          if (!issue.重要度) issue.重要度 = '中';
+          issue._tempId = `NEW-ISSUE-${Date.now()}-${index}`;
+          classified.newIssues.push({ ...issue, _isNew: true });
+        }
+      } else {
+        // 新規課題
+        if (!issue.ステータス) issue.ステータス = '起票';
+        if (!issue.クローズ候補) issue.クローズ候補 = 'OFF';
+        if (!issue.重要度) issue.重要度 = '中';
+        issue._tempId = `NEW-ISSUE-${Date.now()}-${index}`;
+        classified.newIssues.push({ ...issue, _isNew: true });
+      }
+    });
+  }
+
+  // ToDoの分類
+  if (analysisResult.todos) {
+    analysisResult.todos.forEach((todo, index) => {
+      if (todo.既存ToDoNo) {
+        const existing = existingTodos.find(t => t.ToDoNo === todo.既存ToDoNo);
+        if (existing) {
+          // デフォルト値を設定
+          if (!todo.ステータス) todo.ステータス = existing.ステータス || '起票';
+          if (!todo.クローズ候補) todo.クローズ候補 = existing.クローズ候補 || 'OFF';
+          if (!todo.優先度) todo.優先度 = existing.優先度 || '中';
+
+          const displayData = { ...existing, ...todo };
+          const updateData = {
+            ToDoNo: todo.既存ToDoNo,
+            親課題No: existing.親課題No,
+            ...todo,
+            _isUpdate: true,
+            _displayData: displayData
+          };
+          delete updateData.既存ToDoNo;
+
+          if (todo.クローズ候補 === 'ON') {
+            classified.autoClosedTodos.push(updateData);
+          } else {
+            classified.updatedTodos.push(updateData);
+          }
+        } else {
+          // 既存ToDoNoが指定されているが見つからない場合は新規として扱う
+          if (!todo.ステータス) todo.ステータス = '起票';
+          if (!todo.クローズ候補) todo.クローズ候補 = 'OFF';
+          if (!todo.優先度) todo.優先度 = '中';
+          if (!todo.判定対象情報) todo.判定対象情報 = { 成果物ファイル名: '', 成果物URL: '' };
+          todo._tempId = `NEW-TODO-${Date.now()}-${index}`;
+          classified.newTodos.push({ ...todo, _isNew: true });
+        }
+      } else {
+        // 新規ToDo
+        if (!todo.ステータス) todo.ステータス = '起票';
+        if (!todo.クローズ候補) todo.クローズ候補 = 'OFF';
+        if (!todo.優先度) todo.優先度 = '中';
+        if (!todo.判定対象情報) todo.判定対象情報 = { 成果物ファイル名: '', 成果物URL: '' };
+        todo._tempId = `NEW-TODO-${Date.now()}-${index}`;
+        classified.newTodos.push({ ...todo, _isNew: true });
+      }
+    });
+  }
+
+  return classified;
+}
+
 /**
  * Firestoreに未承認議事録を保存
  */
@@ -410,6 +520,40 @@ async function savePendingMinutes(minutesFile, analysisResult, metadata) {
   console.log('💾 Firestoreに未承認議事録を保存中...');
 
   const { db, COLLECTIONS } = await initializeFirestore();
+
+  // 既存の課題・ToDoを取得して分類
+  console.log('📊 既存データを取得して分類中...');
+  let existingIssues = [];
+  let existingTodos = [];
+
+  if (metadata.projectId) {
+    try {
+      const issuesSnapshot = await db.collection(COLLECTIONS.ISSUES)
+        .where('projectId', '==', metadata.projectId)
+        .get();
+      existingIssues = issuesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const todosSnapshot = await db.collection(COLLECTIONS.TODOS)
+        .where('projectId', '==', metadata.projectId)
+        .get();
+      existingTodos = todosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      console.log(`   - 既存課題: ${existingIssues.length}件`);
+      console.log(`   - 既存ToDo: ${existingTodos.length}件`);
+    } catch (error) {
+      console.warn('⚠️  既存データの取得に失敗しました:', error.message);
+    }
+  }
+
+  const classifiedData = classifyAnalysisResult(analysisResult, existingIssues, existingTodos);
+
+  console.log('✅ 分類完了:');
+  console.log(`   - 新規課題: ${classifiedData.newIssues.length}件`);
+  console.log(`   - 更新課題: ${classifiedData.updatedIssues.length}件`);
+  console.log(`   - 自動クローズ課題: ${classifiedData.autoClosedIssues.length}件`);
+  console.log(`   - 新規ToDo: ${classifiedData.newTodos.length}件`);
+  console.log(`   - 更新ToDo: ${classifiedData.updatedTodos.length}件`);
+  console.log(`   - 自動クローズToDo: ${classifiedData.autoClosedTodos.length}件`);
 
   const pendingData = {
     minutesFile: path.basename(minutesFile),
@@ -420,6 +564,7 @@ async function savePendingMinutes(minutesFile, analysisResult, metadata) {
       issues: analysisResult.issues || [],
       todos: analysisResult.todos || []
     },
+    classifiedData,  // 分類済みデータを追加
     metadata: {
       commit: metadata.commit || '',
       pushedBy: metadata.pushedBy || '',
@@ -434,8 +579,6 @@ async function savePendingMinutes(minutesFile, analysisResult, metadata) {
     const docRef = await db.collection(COLLECTIONS.PENDING_MINUTES).add(pendingData);
 
     console.log(`✅ 未承認議事録を保存しました (ID: ${docRef.id})`);
-    console.log(`   - 課題: ${analysisResult.issues?.length || 0}件`);
-    console.log(`   - ToDo: ${analysisResult.todos?.length || 0}件`);
 
     return docRef.id;
   } catch (error) {
