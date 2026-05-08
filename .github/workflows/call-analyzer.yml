@@ -1,16 +1,20 @@
 name: Call Minutes Analyzer
 
+# ========================================
+# 【本番環境用ファイル】
+# このファイルは task_management_app リポジトリの本番環境用です。
+# ユーザーに配布する際は github-actions-template/ フォルダのファイルを使用してください。
+# ========================================
 # このファイルは「呼び出し側」です。
 # minutes/ フォルダにWord(.docx)またはMarkdown(.md)ファイルをプッシュすると、
 # analyzer.yml（実体側）を呼び出して議事録のAI解析を実行します。
+# ========================================
 
 on:
   push:
-    # main/masterブランチ以外で実行（フィーチャーブランチでのみ）
     branches-ignore:
       - main
       - master
-    # 議事録ファイルの変更を検出
     paths:
       - 'minutes/**/*.docx'
       - 'minutes/**/*.md'
@@ -29,7 +33,7 @@ permissions:
 jobs:
   call-analyzer:
     name: Analyze Minutes (via Reusable Workflow)
-    # [skip ci] を含むコミットはスキップ
+    # [skip ci] を含むコミットはスキップ（自動生成されたMarkdownファイルの再解析を防止）
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     # NOTE: 同一リポジトリ内の実体ワークフローを呼び出します
     uses: ./.github/workflows/analyzer.yml

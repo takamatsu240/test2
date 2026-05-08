@@ -1,7 +1,13 @@
 name: Call Auto-Close Detector
 
+# ========================================
+# 【本番環境用ファイル】
+# このファイルは task_management_app リポジトリの本番環境用です。
+# ユーザーに配布する際は github-actions-template/ フォルダのファイルを使用してください。
+# ========================================
 # このファイルは「呼び出し側」です。
 # フィーチャーブランチでコミットすると、auto-close.yml（実体側）を呼び出してToDoの自動クローズ判定を実行します。
+# ========================================
 
 on:
   push:
@@ -10,20 +16,6 @@ on:
       - main
       - master
     # 除外パターン: ドキュメントのみの変更は自動クローズ判定をスキップ
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'minutes/**'
-  pull_request:
-    # プルリクエスト作成時・更新時にも実行
-    types: [opened, synchronize, reopened]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'minutes/**'
-  pull_request:
-    # プルリクエスト作成時・更新時にも実行
-    types: [opened, synchronize, reopened]
     paths-ignore:
       - '**.md'
       - 'docs/**'
