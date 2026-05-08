@@ -102,4 +102,4 @@ jobs:
           echo "🌿 ブランチ: ${{ github.ref_name }}"
           echo "👤 プッシュユーザー: ${{ github.actor }}"
           echo ""
-          echo "詳細なログは上記の「Run 3-Phase Auto-Close Detection」ステップを確認してください"
+          echo "詳細なログは上記の「Run Phase 2 Auto-Close Detection」ステップを確認してください"

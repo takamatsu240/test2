@@ -63,7 +63,8 @@ const COLLECTIONS = {
   PROJECTS: 'projects',
   ISSUES: 'issues',
   TODOS: 'todos',
-  PENDING_MINUTES: 'pending_minutes'  // 未承認議事録
+  PENDING_MINUTES: 'pending_minutes',  // 未承認議事録
+  UNMATCHED_FILE_WARNINGS: 'unmatched_file_warnings'  // 未マッチファイル警告
 };
 
 // 接続確認用の関数
@@ -90,4 +91,4 @@ const testConnection = async () => {
 };
 
 // エクスポート
-module.exports = { firestore, COLLECTIONS, testConnection };
+module.exports = { firestore, COLLECTIONS, testConnection, admin };

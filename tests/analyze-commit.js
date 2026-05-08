@@ -3,6 +3,9 @@
 /**
  * AIハイブリッド型タスク自動追跡システム
  *
+ * Phase 1: コミットメッセージ解析
+ * - コミットメッセージからTODO番号とキーワード（close, fix, 完了など）を抽出 → クローズ候補
+ *
  * Phase 2: ファイル名照合 + ファイル全体AI判定方式
  * - ファイル名照合 + AI判定（完成度: perfect/OK） → クローズ候補
  *
@@ -69,6 +72,50 @@ const EXCLUDED_PATTERNS = [
   'desktop.ini'
 ];
 
+// セキュリティ: 機密情報検出パターン
+const SECURITY_PATTERNS = [
+  {
+    name: 'OpenAI API Key',
+    pattern: /OPENAI_API_KEY\s*=\s*sk-[a-zA-Z0-9_-]+/gi,
+    severity: 'CRITICAL'
+  },
+  {
+    name: 'Generic API Key (sk- prefix)',
+    pattern: /['\"]sk-[a-zA-Z0-9_-]{20,}['\"]|sk-[a-zA-Z0-9_-]{20,}/g,
+    severity: 'CRITICAL'
+  },
+  {
+    name: 'Password in code',
+    pattern: /password\s*[:=]\s*['\"][^'\"]{3,}['\"]|pwd\s*[:=]\s*['\"][^'\"]{3,}['\"]/gi,
+    severity: 'HIGH'
+  },
+  {
+    name: 'Generic API Key',
+    pattern: /api[_-]?key\s*[:=]\s*['\"][^'\"]+['\"]|apikey\s*[:=]\s*['\"][^'\"]+['\"]/gi,
+    severity: 'HIGH'
+  },
+  {
+    name: 'Secret/Token',
+    pattern: /secret\s*[:=]\s*['\"][^'\"]{8,}['\"]|token\s*[:=]\s*['\"][^'\"]{8,}['\"]/gi,
+    severity: 'HIGH'
+  },
+  {
+    name: 'AWS Access Key',
+    pattern: /AKIA[0-9A-Z]{16}/g,
+    severity: 'CRITICAL'
+  },
+  {
+    name: 'Private Key',
+    pattern: /-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----/gi,
+    severity: 'CRITICAL'
+  },
+  {
+    name: 'Firebase Service Account',
+    pattern: /private_key_id|private_key.*BEGIN PRIVATE KEY/gi,
+    severity: 'CRITICAL'
+  }
+];
+
 // ==================== ユーティリティ関数 ====================
 
 /**
@@ -92,11 +139,11 @@ function getLatestCommit() {
   const message = execGit('git log -1 --pretty=%B');
   const author = execGit('git log -1 --pretty=%an');
   const date = execGit('git log -1 --pretty=%ci');
-
+  
   if (!hash || !message) {
     return null;
   }
-
+  
   return { hash, message, author, date };
 }
 
@@ -117,6 +164,17 @@ function getChangedFiles(commitHash) {
   if (!output) return [];
 
   return output.split('\n').filter(f => f.trim() !== '');
+}
+
+/**
+ * 特定ファイルの全体内容を取得（Phase 2用）
+ * 差分ではなくファイル全体を取得
+ */
+function getFileContent(commitHash, filePath) {
+  // コミット時点のファイル全体を取得
+  const content = execGit(`git show ${commitHash}:"${filePath}"`);
+
+  return content || '';
 }
 
 /**
@@ -146,6 +204,115 @@ function getFileDiff(commitHash, filePath) {
   }
 
   return diff || '';
+}
+
+/**
+ * コミット差分のセキュリティスキャン
+ * 機密情報（APIキー、パスワード等）の検出
+ * @param {string} commitHash - コミットハッシュ
+ * @param {string[]} changedFiles - 変更されたファイルのリスト
+ * @returns {object[]} 検出された機密情報のリスト
+ */
+function scanCommitForSecrets(commitHash, changedFiles) {
+  const findings = [];
+
+  console.log('🔒 セキュリティスキャン: コミット差分を検査中...');
+
+  for (const file of changedFiles) {
+    // 差分を取得
+    const diff = getFileDiff(commitHash, file);
+
+    if (!diff) continue;
+
+    // 追加された行のみを抽出（+で始まる行）
+    const addedLines = diff
+      .split('\n')
+      .filter(line => line.startsWith('+') && !line.startsWith('+++'))
+      .map(line => line.substring(1))
+      .join('\n');
+
+    // 各パターンでスキャン
+    for (const pattern of SECURITY_PATTERNS) {
+      const matches = addedLines.match(pattern.pattern);
+
+      if (matches && matches.length > 0) {
+        // 重複を除去
+        const uniqueMatches = [...new Set(matches)];
+
+        for (const match of uniqueMatches) {
+          findings.push({
+            file,
+            type: pattern.name,
+            severity: pattern.severity,
+            match: match.substring(0, 50) + (match.length > 50 ? '...' : ''), // 最初の50文字のみ表示
+            line: match
+          });
+        }
+      }
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * セキュリティスキャン結果を表示
+ * @param {object[]} findings - 検出された機密情報
+ * @returns {boolean} 機密情報が検出されたかどうか
+ */
+function displaySecurityFindings(findings) {
+  if (findings.length === 0) {
+    console.log('✅ セキュリティスキャン: 機密情報は検出されませんでした\n');
+    return false;
+  }
+
+  console.log('');
+  console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+  console.log('🚨                                              🚨');
+  console.log('🚨  セキュリティ警告: 機密情報を検出しました！  🚨');
+  console.log('🚨                                              🚨');
+  console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+  console.log('');
+  console.log(`検出件数: ${findings.length}件`);
+  console.log('');
+
+  // 重要度別にグループ化
+  const critical = findings.filter(f => f.severity === 'CRITICAL');
+  const high = findings.filter(f => f.severity === 'HIGH');
+
+  if (critical.length > 0) {
+    console.log('❌ CRITICAL（重大）:');
+    critical.forEach((finding, index) => {
+      console.log(`  ${index + 1}. ${finding.type}`);
+      console.log(`     ファイル: ${finding.file}`);
+      console.log(`     検出内容: ${finding.match}`);
+      console.log('');
+    });
+  }
+
+  if (high.length > 0) {
+    console.log('⚠️  HIGH（高）:');
+    high.forEach((finding, index) => {
+      console.log(`  ${index + 1}. ${finding.type}`);
+      console.log(`     ファイル: ${finding.file}`);
+      console.log(`     検出内容: ${finding.match}`);
+      console.log('');
+    });
+  }
+
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('⚠️  対処方法:');
+  console.log('   1. このコミットを取り消してください');
+  console.log('   2. 機密情報を削除してください');
+  console.log('   3. .gitignoreに適切なパターンを追加してください');
+  console.log('   4. 漏洩した認証情報は直ちに無効化してください');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('');
+  console.log('❌ AI解析を中止します');
+  console.log('❌ GitHub Actionsを失敗させます');
+  console.log('');
+
+  return true;
 }
 
 /**
@@ -342,7 +509,7 @@ async function markAsCloseCandidate(todoNo, params) {
   try {
     // ToDoの存在確認
     const todoDoc = await firestore.collection(COLLECTIONS.TODOS).doc(todoNo).get();
-
+    
     if (!todoDoc.exists) {
       throw new Error(`ToDo ${todoNo} が見つかりません`);
     }
@@ -351,16 +518,16 @@ async function markAsCloseCandidate(todoNo, params) {
 
     // クローズ候補フラグをONに更新
     todo.クローズ候補 = 'ON';
-
+    
     // ステータス更新
     if (params.status) {
       if (['closed', 'in_progress', 'review_pending'].includes(params.status)) {
-        todo.ステータス = params.status === 'closed' ? 'クローズ' :
+        todo.ステータス = params.status === 'closed' ? 'クローズ' : 
                           params.status === 'in_progress' ? '作業中' :
                           '確認待ち';
       }
     }
-
+    
     // AI解析結果を保存
     if (params.aiAnalysis) {
       todo.aiAnalysis = {
@@ -387,18 +554,18 @@ async function markAsCloseCandidate(todoNo, params) {
       送信内容: params.aiAnalysis?.contentType || ''
     };
     todo.判定履歴.push(historyEntry);
-
+    
     // クローズ日の設定
     if (params.status === 'closed') {
       todo.クローズ日 = new Date().toISOString().split('T')[0];
     }
-
+    
     // 更新日を設定
     todo.更新日 = new Date().toISOString().split('T')[0];
-
+    
     // Firestoreに保存
     await firestore.collection(COLLECTIONS.TODOS).doc(todoNo).set(todo, { merge: true });
-
+    
     return { success: true, todo };
   } catch (error) {
     console.error(`❌ クローズ候補マークエラー (${todoNo}):`, error.message);
@@ -530,22 +697,92 @@ ${codeContent}
   }
 }
 
+// ==================== Phase 1: コミットメッセージ解析 ====================
+
+/**
+ * コミットメッセージからTODO番号とキーワードを抽出してクローズ候補を検出
+ *
+ * 対応パターン:
+ * - close TODO-001
+ * - fix TODO-001, TODO-002
+ * - resolve TODO-001
+ * - TODO-001 完了
+ * - TODO-001をクローズ
+ * - 完了: TODO-001
+ */
+function phase1_parseCommitMessage(commitMessage, unclosedTodos) {
+  const matched = [];
+
+  // TODO番号のパターン（TODO-001, ISSUE-001など）
+  const todoPattern = /(?:TODO|ISSUE)-\d+/gi;
+
+  // クローズを示すキーワード（英語・日本語）
+  const closeKeywords = [
+    // 英語
+    'close', 'closes', 'closed',
+    'fix', 'fixes', 'fixed',
+    'resolve', 'resolves', 'resolved',
+    'complete', 'completes', 'completed',
+    'done',
+    // 日本語
+    '完了', 'クローズ', '終了', '解決', '修正'
+  ];
+
+  // コミットメッセージを小文字化（キーワード検出用）
+  const lowerMessage = commitMessage.toLowerCase();
+
+  // クローズキーワードが含まれているかチェック
+  const hasCloseKeyword = closeKeywords.some(keyword =>
+    lowerMessage.includes(keyword.toLowerCase())
+  );
+
+  if (!hasCloseKeyword) {
+    // キーワードがない場合は何もしない
+    return matched;
+  }
+
+  // TODO番号を抽出
+  const todoNumbers = commitMessage.match(todoPattern);
+
+  if (!todoNumbers || todoNumbers.length === 0) {
+    return matched;
+  }
+
+  // 重複を除去（大文字小文字を統一）
+  const uniqueTodoNumbers = [...new Set(todoNumbers.map(t => t.toUpperCase()))];
+
+  // 各TODO番号について、未クローズTODOに存在するかチェック
+  for (const todoNo of uniqueTodoNumbers) {
+    const todo = unclosedTodos.find(t => t.ToDoNo === todoNo || t.課題No === todoNo);
+
+    if (todo) {
+      matched.push({
+        todoNo: todo.ToDoNo || todo.課題No,
+        reason: `コミットメッセージで明示的にクローズ指定: "${commitMessage.substring(0, 100)}${commitMessage.length > 100 ? '...' : ''}"`,
+        isIssue: !!todo.課題No
+      });
+    }
+  }
+
+  return matched;
+}
+
 // ==================== Phase 2: ファイル名照合（ワイルドカード対応） ====================
 
 function phase2_matchByFileName(changedFiles, unclosedTodos) {
   const matched = [];
-
+  
   for (const todo of unclosedTodos) {
     // 判定対象情報から成果物ファイル名を取得
     const targetFile = todo.判定対象情報?.成果物ファイル名;
-
+    
     if (!targetFile || targetFile.trim() === '') {
       continue; // 成果物ファイル名が設定されていない
     }
-
+    
     let isMatch = false;
     let matchedFile = null;
-
+    
     // ワイルドカードパターン（**, *, ?）が含まれている場合
     if (targetFile.includes('*') || targetFile.includes('?')) {
       // グロブパターンマッチング（minimatch使用）
@@ -566,7 +803,7 @@ function phase2_matchByFileName(changedFiles, unclosedTodos) {
         }
       }
     }
-
+    
     if (isMatch) {
       matched.push({
         todoNo: todo.ToDoNo,
@@ -575,7 +812,7 @@ function phase2_matchByFileName(changedFiles, unclosedTodos) {
       });
     }
   }
-
+  
   return matched;
 }
 
@@ -584,14 +821,15 @@ function phase2_matchByFileName(changedFiles, unclosedTodos) {
 async function main() {
   console.log('=========================================');
   console.log('AIハイブリッド型タスク自動追跡システム');
-  console.log('（Phase 2: ファイル名照合 + AI判定）');
+  console.log('Phase 1: コミットメッセージ解析');
+  console.log('Phase 2: ファイル名照合 + AI判定');
   console.log('すべてクローズ候補マーク（レビュー必須）');
   console.log('=========================================\n');
 
   // 最新コミット情報を取得
   console.log('📝 最新のコミット情報を取得中...');
   const commit = getLatestCommit();
-
+  
   if (!commit) {
     console.log('❌ コミット情報の取得に失敗しました。');
     process.exit(1);
@@ -605,10 +843,10 @@ async function main() {
   console.log('📂 変更ファイルを取得中...');
   const changedFiles = getChangedFiles(commit.hash);
   const filteredFiles = filterExcludedFiles(changedFiles);
-
+  
   console.log(`✓ 変更ファイル: ${changedFiles.length}件`);
   console.log(`✓ 解析対象: ${filteredFiles.length}件（除外: ${changedFiles.length - filteredFiles.length}件）`);
-
+  
   if (filteredFiles.length > 0) {
     console.log('  - ' + filteredFiles.slice(0, 5).join('\n  - '));
     if (filteredFiles.length > 5) {
@@ -616,6 +854,22 @@ async function main() {
     }
   }
   console.log('');
+
+  // ==================== セキュリティスキャン ====================
+  console.log('🔒 セキュリティスキャン開始');
+  const securityFindings = scanCommitForSecrets(commit.hash, filteredFiles);
+  const hasSecurityIssues = displaySecurityFindings(securityFindings);
+
+  if (hasSecurityIssues) {
+    console.error('');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ セキュリティ警告により処理を中止しました');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('');
+
+    // GitHub Actionsを失敗させる
+    process.exit(1);
+  }
 
   // 未クローズToDoを取得
   console.log('📋 未クローズToDoを取得中...');
@@ -630,6 +884,28 @@ async function main() {
 
   // 結果を格納
   const results = new Map(); // TodoNo -> { reason, phase, aiAnalysis }
+
+  // ==================== Phase 1: コミットメッセージ解析 ====================
+  console.log('🔍 Phase 1: コミットメッセージ解析');
+  const phase1Matches = phase1_parseCommitMessage(commit.message, unclosedTodos);
+
+  if (phase1Matches.length > 0) {
+    console.log(`✓ ${phase1Matches.length}件のTODO番号を検出`);
+
+    for (const match of phase1Matches) {
+      console.log(`  - ${match.todoNo}: ${match.reason}`);
+
+      results.set(match.todoNo, {
+        reason: match.reason,
+        phase: 'Phase1 (コミットメッセージ)',
+        commitHash: commit.hash.substring(0, 10),
+        commitMessage: commit.message.split('\n')[0]
+      });
+    }
+  } else {
+    console.log('ℹ️  コミットメッセージにクローズ指定が見つかりませんでした');
+  }
+  console.log('');
 
   // ==================== Phase 2: ファイル名照合 + ファイル全体AI判定 ====================
   console.log('🔍 Phase 2: ファイル名照合 + ファイル全体AI判定');
@@ -675,6 +951,12 @@ async function main() {
 
       for (const match of phase2Matches) {
         try {
+          // Phase 1で既にマーク済みの場合はスキップ
+          if (results.has(match.todoNo)) {
+            console.log(`  ⏭️  ${match.todoNo}: Phase 1で既にマーク済み`);
+            continue;
+          }
+
           // 該当ファイルの全体内容と差分を取得
           const fileContent = getFileContent(commit.hash, match.matchedFile);
           const fileDiff = getFileDiff(commit.hash, match.matchedFile);
@@ -796,32 +1078,34 @@ async function main() {
   console.log('=========================================');
   console.log('📊 統合結果');
   console.log('=========================================');
-
+  
   if (results.size === 0) {
     console.log('ℹ️  該当するToDoが見つかりませんでした。');
     console.log('');
     console.log('💡 ヒント:');
+    console.log('  - コミットメッセージにTODO番号とキーワードを含める（Phase 1）');
+    console.log('    例: "close TODO-001", "TODO-001 完了", "fix TODO-001, TODO-002"');
     console.log('  - ToDoの判定対象情報に成果物ファイル名を設定する（Phase 2）');
     console.log('');
     process.exit(0);
   }
 
   console.log(`✓ ${results.size}件のToDoをクローズ候補にマークします:\n`);
-
+  
   for (const [todoNo, data] of results) {
     console.log(`  【${todoNo}】`);
     console.log(`    判定: ${data.phase}`);
     console.log(`    アクション: クローズ候補マーク（レビュー必須）`);
     console.log(`    理由: ${data.reason}`);
     if (data.aiAnalysis) {
-      console.log(`    AI完成度: ${data.aiAnalysis.completeness}`);
+      console.log(`    AI信頼度: ${(data.aiAnalysis.confidence * 100).toFixed(0)}%`);
     }
     console.log('');
   }
 
   // ==================== API呼び出し ====================
   console.log('🚀 クローズ候補判定APIを呼び出し中...');
-
+  
   let successCount = 0;
   let errorCount = 0;
 
@@ -846,9 +1130,9 @@ async function main() {
 
   if (successCount > 0) {
     console.log('📌 次のステップ:');
-    console.log('1. アプリのダッシュボードを開く');
-    console.log('2. 「クローズ候補」セクションを確認');
-    console.log('3. 該当ToDoをレビューしてクローズ');
+    console.log('1. ブラウザで http://localhost:3001 を開く');
+    console.log('2. ダッシュボードの「クローズ候補」セクションを確認');
+    console.log('3. 該当ToDoをワンクリックでクローズ');
     console.log('');
   }
 

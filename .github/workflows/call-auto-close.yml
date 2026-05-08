@@ -21,6 +21,13 @@ on:
       - '**.md'
       - 'docs/**'
       - 'minutes/**'
+  pull_request:
+    # プルリクエスト作成時・更新時にも実行
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'minutes/**'
   workflow_dispatch:
     inputs:
       project_id:
@@ -29,7 +36,7 @@ on:
         type: string
         default: ''
       ai_analysis_enabled:
-        description: 'Enable AI analysis'
+        description: 'Enable AI analysis (Phase 2)'
         required: false
         type: boolean
         default: true
@@ -43,14 +50,15 @@ jobs:
     name: Auto-Close Todos (via Reusable Workflow)
     # [skip ci] を含むコミットはスキップ
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
-    # CHANGEME: 同一リポジトリ内の実体ワークフローを呼び出します
+    # NOTE: 同一リポジトリ内の実体ワークフローを呼び出します
     uses: ./.github/workflows/auto-close.yml
     with:
-      # CHANGEME: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
+      # NOTE: 複数プロジェクトを管理する場合は、プロジェクトIDを指定してください（省略可）
       project_id: ${{ inputs.project_id || '' }}
+      # Phase 2（ファイル名照合 + AI判定）を使用
       ai_analysis_enabled: ${{ inputs.ai_analysis_enabled || true }}
     secrets:
-      # CHANGEME: 以下のシークレットをGitHubリポジトリのSettings > Secrets and variablesに登録してください
+      # NOTE: 以下のシークレットがGitHubリポジトリのSettings > Secrets and variablesに登録されている必要があります
       FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
